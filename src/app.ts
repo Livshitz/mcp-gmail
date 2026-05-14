@@ -8,6 +8,7 @@ import { parseMessage } from './parse.ts';
 import { buildRawMessage } from './mime.ts';
 import { slimMessages, slimThread } from './slim.ts';
 import { inlineOrSpool } from './spool.ts';
+import { refreshAccount, getCachedMessage, cacheMessage } from './cache.ts';
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -40,13 +41,37 @@ export function createGmailMcp() {
 
   // ── GET /gmail/accounts ──
   base.describeMCP('/gmail/accounts', 'GET', {
-    description: 'List all configured Gmail accounts (service account delegation + OAuth tokens on disk).',
-    params: {},
+    description: 'List all configured Gmail accounts with stats (unread count, recent messages). Call this first to discover available accounts and their state.',
+    params: {
+      refresh: { description: 'Set to true to force-refresh stats from Gmail API (default: uses cache with 2min TTL)', type: 'string' },
+    },
     annotations: { readOnlyHint: true },
   });
-  router.get('/gmail/accounts', async () => {
+  router.get('/gmail/accounts', async (req) => {
     try {
-      return json({ accounts: listAccounts() });
+      const force = qp(req, 'refresh') === 'true';
+      const accounts = listAccounts();
+      const enriched = await Promise.all(accounts.map(async (a) => {
+        try {
+          const stats = await refreshAccount(a.email, force);
+          return {
+            ...a,
+            unreadCount: stats.unreadCount,
+            inboxCount: stats.inboxCount,
+            lastRefreshed: new Date(stats.lastRefreshed).toISOString(),
+            recentSubjects: stats.recentMessages.slice(0, 5).map(m => ({
+              id: m.id,
+              from: m.from,
+              subject: m.subject,
+              date: m.date,
+              unread: m.labelIds.includes('UNREAD'),
+            })),
+          };
+        } catch (e) {
+          return { ...a, error: errMessage(e) };
+        }
+      }));
+      return json({ accounts: enriched });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
     }
@@ -139,6 +164,7 @@ export function createGmailMcp() {
       if (!id) return json({ error: 'id is required' }, { status: 400 });
       const ue = qp(req, 'user_email');
       const msg = await gmailApi(`messages/${id}`, { query: { format: 'full' }, userEmail: ue });
+      cacheMessage(msg);
       const out = truthyFull(req) ? msg : parseMessage(msg);
       return json(inlineOrSpool('get_gmail_message_by_id', out));
     } catch (e) {

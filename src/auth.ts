@@ -146,10 +146,12 @@ export async function runAuthFlow(email: string): Promise<void> {
         const code = url.searchParams.get('code');
         const error = url.searchParams.get('error');
 
+        const htmlHeaders = { 'Content-Type': 'text/html; charset=utf-8' } as const;
+
         if (error) {
           reject(new Error(`Auth denied: ${error}`));
           setTimeout(() => server.stop(), 100);
-          return new Response('<html><body><h2>Authentication failed.</h2><p>You can close this tab.</p></body></html>', { headers: { 'Content-Type': 'text/html' } });
+          return new Response('<html><body><h2>Authentication failed.</h2><p>You can close this tab.</p></body></html>', { headers: htmlHeaders });
         }
 
         if (!code) {
@@ -160,7 +162,7 @@ export async function runAuthFlow(email: string): Promise<void> {
 
         resolve(code);
         setTimeout(() => server.stop(), 100);
-        return new Response('<html><body><h2>✓ Authenticated!</h2><p>You can close this tab.</p></body></html>', { headers: { 'Content-Type': 'text/html' } });
+        return new Response('<html><body><h2>✓ Authenticated!</h2><p>You can close this tab.</p></body></html>', { headers: htmlHeaders });
       },
     });
 
