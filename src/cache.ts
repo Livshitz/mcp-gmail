@@ -32,7 +32,7 @@ interface CacheStore {
 }
 
 const LIST_TTL = 2 * 60 * 1000; // 2 min for list queries
-const MSG_TTL = Infinity; // message metadata is immutable
+const MAX_CACHED_MESSAGES = 5000;
 
 let store: CacheStore = { accounts: {}, messages: {} };
 let loaded = false;
@@ -51,6 +51,14 @@ function loadStore(): void {
 }
 
 function saveStore(): void {
+  // Evict oldest messages if over limit
+  const ids = Object.keys(store.messages);
+  if (ids.length > MAX_CACHED_MESSAGES) {
+    ids.sort((a, b) => Number(store.messages[a].internalDate || 0) - Number(store.messages[b].internalDate || 0));
+    for (const id of ids.slice(0, ids.length - MAX_CACHED_MESSAGES)) {
+      delete store.messages[id];
+    }
+  }
   mkdirSync(CACHE_DIR, { recursive: true });
   writeFileSync(cachePath(), JSON.stringify(store, null, 2));
 }
@@ -71,7 +79,7 @@ function extractHeaders(msg: any): CachedMessage {
   };
 }
 
-async function fetchMessageMeta(ids: { id: string }[], userEmail: string): Promise<CachedMessage[]> {
+export async function fetchMessageMetaCached(ids: { id: string }[], userEmail?: string): Promise<CachedMessage[]> {
   loadStore();
   const result: CachedMessage[] = [];
   const toFetch: string[] = [];
@@ -121,7 +129,7 @@ export async function refreshAccount(email: string, force = false): Promise<Acco
   ]);
 
   const inboxIds = inboxList.messages ?? [];
-  const allMeta = await fetchMessageMeta(inboxIds, email);
+  const allMeta = await fetchMessageMetaCached(inboxIds, email);
   const metaMap = new Map(allMeta.map(m => [m.id, m]));
 
   const recentMessages = inboxIds.map(({ id }) => metaMap.get(id)!).filter(Boolean);

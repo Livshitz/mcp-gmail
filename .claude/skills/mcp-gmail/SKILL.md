@@ -2,30 +2,38 @@
 name: mcp-gmail
 description: >-
   Gmail API MCP server — read, search, compose, send, reply, draft, manage labels.
-  Supports multiple accounts via user_email param (domain-wide delegation).
+  Multi-account (service account + OAuth). Smart cache with dashboard CLI.
 when_to_use: >-
   mcp-gmail, Gmail, email, send email, read email, compose, reply, draft, labels,
-  GMAIL_USER_EMAIL, user_email, multi-account
+  GMAIL_USER_EMAIL, user_email, multi-account, dashboard
 paths: "src/**/*.ts,package.json"
 ---
 
 # mcp-gmail
 
 ## Architecture
-- **Entry**: `src/mcp/cli.ts` — `--stdio` (default) or `--http` (port 3461)
+- **Entry**: `src/mcp/cli.ts` — default=dashboard, `--stdio` or `--http` (port 3461)
 - **App factory**: `createGmailMcp()` in `src/app.ts`
 - **API**: `gmailApi()` in `src/gmail-api.ts` — fetch-based, no SDK
-- **Auth**: Service account + domain-wide delegation via `src/auth.ts`. Per-user token cache.
+- **Auth**: `src/auth.ts` — service account (Workspace) + OAuth2 (personal Gmail). Per-user token cache.
+- **Cache**: `src/cache.ts` — per-account stats (2-min TTL) + immutable message metadata (5000-cap LRU)
 - **Large JSON**: `inlineOrSpool()` over threshold (default 12_000 chars)
 
 ## Multi-account
 All tools accept an optional `user_email` param. If omitted, defaults to `GMAIL_USER_EMAIL`.
-All users must be in the same Google Workspace domain with delegation authorized for the service account.
+Workspace users need domain-wide delegation. Personal Gmail uses OAuth2 (`--auth <email>`).
+
+## CLI
+- `bun run src/mcp/cli.ts` — dashboard (default, no flags)
+- `bun run src/mcp/cli.ts --dashboard` / `--list` — explicit dashboard
+- `bun run src/mcp/cli.ts --auth <email>` — interactive OAuth2 flow
+- `bun run src/mcp/cli.ts --stdio` — MCP stdio server
+- `bun run src/mcp/cli.ts --http` — HTTP + MCP server (port 3461)
 
 ## MCP tool names
-- `get_gmail_accounts` — list all configured accounts (service account + OAuth tokens)
+- `get_gmail_accounts` — list accounts with unread/inbox counts, recent subjects (call first for overview)
 - `get_gmail_labels` — list all labels
-- `get_gmail_messages` — list/search messages (q, labelIds, maxResults, pageToken)
+- `get_gmail_messages` — list/search messages (q, labelIds, maxResults, pageToken). Uses cache for metadata.
 - `get_gmail_message_by_id` — full message with parsed body + attachments
 - `get_gmail_threads` — list threads
 - `get_gmail_thread_by_id` — full thread with all messages
@@ -35,15 +43,16 @@ All users must be in the same Google Workspace domain with delegation authorized
 - `post_gmail_labels` — add/remove labels from a message
 
 ## Best practices
-1. Use `q` param with Gmail search syntax: `from:alice is:unread newer_than:1d`
-2. `get_gmail_messages` returns slim list — use `get_gmail_message_by_id` for full content
-3. For replies, pass both `threadId` and `messageId` — headers are auto-set
-4. `full=true` on any GET returns raw Gmail API payload (may spool to disk)
-5. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
-6. For multi-account: pass `user_email` on each call, or set `GMAIL_USER_EMAIL` as default
+1. Call `get_gmail_accounts` first for a quick overview of all accounts + unread counts
+2. Use `q` param with Gmail search syntax: `from:alice is:unread newer_than:1d`
+3. `get_gmail_messages` returns cached slim list — use `get_gmail_message_by_id` for full content
+4. For replies, pass both `threadId` and `messageId` — headers are auto-set
+5. `full=true` on any GET returns raw Gmail API payload (may spool to disk)
+6. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
+7. For multi-account: pass `user_email` on each call, or set `GMAIL_USER_EMAIL` as default
 
 ## Auth
 - **Workspace**: `GOOGLE_SERVICE_ACCOUNT` (service account + domain-wide delegation)
-- **Personal Gmail**: `GMAIL_OAUTH_CREDENTIALS` (OAuth2 — run `--auth <email>` once to store refresh token)
+- **Personal Gmail**: `GMAIL_OAUTH_CREDENTIALS` or `GMAIL_OAUTH_CLIENT_ID` + `GMAIL_OAUTH_CLIENT_SECRET` (run `--auth <email>` once to store refresh token)
 - Both work simultaneously; service account tried first, falls back to OAuth
 - `GMAIL_USER_EMAIL` — default account (optional if user_email is always passed)

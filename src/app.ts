@@ -6,9 +6,9 @@ import { gmailApi } from './gmail-api.ts';
 import { resolveUserEmail, getDefaultUserEmail, listAccounts } from './auth.ts';
 import { parseMessage } from './parse.ts';
 import { buildRawMessage } from './mime.ts';
-import { slimMessages, slimThread } from './slim.ts';
+import { slimThread } from './slim.ts';
 import { inlineOrSpool } from './spool.ts';
-import { refreshAccount, getCachedMessage, cacheMessage } from './cache.ts';
+import { refreshAccount, cacheMessage, fetchMessageMetaCached } from './cache.ts';
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -125,11 +125,9 @@ export function createGmailMcp() {
 
       const full = truthyFull(req);
       if (!full) {
-        const batch = await Promise.all(
-          list.messages.map((m) => gmailApi(`messages/${m.id}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' }, userEmail: ue })),
-        );
+        const cached = await fetchMessageMetaCached(list.messages, ue);
         return json(inlineOrSpool('get_gmail_messages', {
-          messages: slimMessages(batch),
+          messages: cached,
           nextPageToken: list.nextPageToken,
           resultSizeEstimate: list.resultSizeEstimate,
         }));
@@ -357,12 +355,13 @@ export function createGmailMcp() {
   const defaultEmail = getDefaultUserEmail();
   const mcp = base.asMCP({
     name: 'mcp-gmail',
-    version: '0.3.0',
+    version: '0.4.0',
     instructions:
       `Gmail API MCP${defaultEmail ? ` (default: ${defaultEmail})` : ''}. Read, search, compose, send, reply, draft, and manage labels. ` +
-      'Supports multiple accounts — pass user_email to act as a different user (requires domain-wide delegation). ' +
+      'Supports multiple accounts (Workspace + personal Gmail) — pass user_email to act as a different user. ' +
+      'Start with get_gmail_accounts for a quick overview of all accounts, unread counts, and recent subjects. ' +
       'Use Gmail search syntax for q param (e.g. "from:alice is:unread newer_than:1d"). ' +
-      'get_gmail_messages returns slim list — use get_gmail_message_by_id for full content. ' +
+      'get_gmail_messages returns cached slim list — use get_gmail_message_by_id for full content. ' +
       'Replies auto-include all To/CC participants (reply-all). All tools spool large results to disk.',
   });
 

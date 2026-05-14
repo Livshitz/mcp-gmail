@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { JwtHelper } from 'edge.libx.js/build/helpers/jwt.js';
@@ -215,7 +215,6 @@ export function listAccounts(): AccountInfo[] {
 
   // OAuth tokens on disk
   if (existsSync(TOKEN_DIR)) {
-    const { readdirSync } = require('node:fs');
     for (const file of readdirSync(TOKEN_DIR) as string[]) {
       if (!file.endsWith('.json')) continue;
       const email = file.replace(/\.json$/, '');
