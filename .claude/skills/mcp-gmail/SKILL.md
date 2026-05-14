@@ -23,6 +23,7 @@ All tools accept an optional `user_email` param. If omitted, defaults to `GMAIL_
 All users must be in the same Google Workspace domain with delegation authorized for the service account.
 
 ## MCP tool names
+- `get_gmail_accounts` — list all configured accounts (service account + OAuth tokens)
 - `get_gmail_labels` — list all labels
 - `get_gmail_messages` — list/search messages (q, labelIds, maxResults, pageToken)
 - `get_gmail_message_by_id` — full message with parsed body + attachments

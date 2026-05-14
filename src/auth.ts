@@ -194,6 +194,41 @@ export async function runAuthFlow(email: string): Promise<void> {
   console.log(`✓ Token saved for ${email} at ${tokenPath(email)}`);
 }
 
+// ── Account listing ────────────────────────────────────────────────────────
+
+export interface AccountInfo {
+  email: string;
+  authMethod: 'service-account' | 'oauth';
+  isDefault: boolean;
+}
+
+export function listAccounts(): AccountInfo[] {
+  const accounts: AccountInfo[] = [];
+  const defaultEmail = getDefaultUserEmail();
+
+  // Service account (Workspace) — just the default email if configured
+  if (defaultEmail && process.env.GOOGLE_SERVICE_ACCOUNT?.trim()) {
+    accounts.push({ email: defaultEmail, authMethod: 'service-account', isDefault: true });
+  }
+
+  // OAuth tokens on disk
+  if (existsSync(TOKEN_DIR)) {
+    const { readdirSync } = require('node:fs');
+    for (const file of readdirSync(TOKEN_DIR) as string[]) {
+      if (!file.endsWith('.json')) continue;
+      const email = file.replace(/\.json$/, '');
+      const existing = accounts.find(a => a.email === email);
+      if (existing) {
+        existing.authMethod = 'service-account'; // SA takes priority but OAuth exists too
+      } else {
+        accounts.push({ email, authMethod: 'oauth', isDefault: email === defaultEmail });
+      }
+    }
+  }
+
+  return accounts;
+}
+
 // ── Main token resolver ─────────────────────────────────────────────────────
 
 export async function getAccessToken(userEmail?: string): Promise<string> {

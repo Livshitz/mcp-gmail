@@ -3,7 +3,7 @@ import { json } from 'itty-router';
 import { RouterWrapper } from 'edge.libx.js/build/main.js';
 import { augmentMcpWithSkillResource } from './mcp/with-skill-resource.ts';
 import { gmailApi } from './gmail-api.ts';
-import { resolveUserEmail, getDefaultUserEmail } from './auth.ts';
+import { resolveUserEmail, getDefaultUserEmail, listAccounts } from './auth.ts';
 import { parseMessage } from './parse.ts';
 import { buildRawMessage } from './mime.ts';
 import { slimMessages, slimThread } from './slim.ts';
@@ -37,6 +37,20 @@ export function createGmailMcp() {
     allowHeaders: ['Content-Type', 'Authorization'],
   });
   const { router } = base;
+
+  // ── GET /gmail/accounts ──
+  base.describeMCP('/gmail/accounts', 'GET', {
+    description: 'List all configured Gmail accounts (service account delegation + OAuth tokens on disk).',
+    params: {},
+    annotations: { readOnlyHint: true },
+  });
+  router.get('/gmail/accounts', async () => {
+    try {
+      return json({ accounts: listAccounts() });
+    } catch (e) {
+      return json({ error: errMessage(e) }, { status: 500 });
+    }
+  });
 
   // ── GET /gmail/labels ──
   base.describeMCP('/gmail/labels', 'GET', {

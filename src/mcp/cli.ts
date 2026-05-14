@@ -1,8 +1,19 @@
 #!/usr/bin/env bun
 import { createGmailMcp } from '../app.ts';
-import { runAuthFlow } from '../auth.ts';
+import { runAuthFlow, listAccounts } from '../auth.ts';
 
 const argv = process.argv.slice(2);
+
+// --list : show configured accounts
+if (argv.includes('--list')) {
+  const accounts = listAccounts();
+  if (!accounts.length) { console.log('No accounts configured.'); process.exit(0); }
+  for (const a of accounts) {
+    const tag = [a.authMethod, a.isDefault ? 'default' : ''].filter(Boolean).join(', ');
+    console.log(`  ${a.email}  (${tag})`);
+  }
+  process.exit(0);
+}
 
 // --auth <email> : interactive OAuth2 flow
 const authIdx = argv.indexOf('--auth');
