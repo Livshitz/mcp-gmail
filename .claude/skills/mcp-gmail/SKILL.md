@@ -25,7 +25,7 @@ paths: "src/**/*.ts,package.json"
 - `get_gmail_threads` — list threads
 - `get_gmail_thread_by_id` — full thread with all messages
 - `post_gmail_send` — compose and send (to, subject, body, cc, bcc, html)
-- `post_gmail_reply` — reply to thread (threadId, messageId, body)
+- `post_gmail_reply` — reply-all to thread (threadId, messageId, body). Auto-includes To/CC participants; override with explicit to/cc
 - `post_gmail_draft` — create draft
 - `post_gmail_labels` — add/remove labels from a message
 
