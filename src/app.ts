@@ -317,7 +317,7 @@ export function createGmailMcp() {
   const defaultEmail = getDefaultUserEmail();
   const mcp = base.asMCP({
     name: 'mcp-gmail',
-    version: '0.2.0',
+    version: '0.3.0',
     instructions:
       `Gmail API MCP${defaultEmail ? ` (default: ${defaultEmail})` : ''}. Read, search, compose, send, reply, draft, and manage labels. ` +
       'Supports multiple accounts — pass user_email to act as a different user (requires domain-wide delegation). ' +

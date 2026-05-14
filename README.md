@@ -1,47 +1,66 @@
 # mcp-gmail
 
-Gmail API MCP server using service account + domain-wide delegation. No OAuth consent flow — impersonates any Google Workspace user directly.
+Gmail API MCP server. Supports **Google Workspace** (service account delegation) and **personal Gmail** (OAuth2 refresh token). One instance handles multiple accounts.
 
-## Setup
+## Auth Methods
 
-### 1. GCP Project
+### Option A: Service Account (Workspace domains)
+
+Best for orgs. No per-user consent flow — impersonates any user in the domain.
 
 1. [Enable Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com) in your GCP project
-2. Create a service account (or reuse an existing one, e.g. shared with Google Drive)
-3. Download the service account JSON key
-
-### 2. Domain-Wide Delegation
-
-1. Go to [Google Workspace Admin](https://admin.google.com) → Security → API Controls → **Domain-wide Delegation**
-2. Click **Add new** and enter:
-   - **Client ID**: your service account's client ID (numeric, from the JSON `client_id` field)
-   - **Scopes**: `https://mail.google.com/`
-3. Authorize
-
-### 3. Environment
+2. Create a service account + download JSON key
+3. [Google Workspace Admin](https://admin.google.com) → Security → API Controls → **Domain-wide Delegation** → add client ID with scope `https://mail.google.com/`
 
 ```bash
-# Path to JSON key file, or inline JSON string
 export GOOGLE_SERVICE_ACCOUNT=./secrets/google-service-account.json
-
-# Default Workspace user to impersonate (optional if user_email is always passed per-call)
-export GMAIL_USER_EMAIL=agent@yourdomain.com
+export GMAIL_USER_EMAIL=agent@yourdomain.com  # default account
 ```
 
-Optional:
-- `MCP_GMAIL_SPOOL_THRESHOLD` — char limit before spooling to disk (default 12000)
-- `MCP_GMAIL_CACHE_DIR` — spool directory (default `.mcp-gmail/cache/`)
+### Option B: OAuth2 (personal Gmail / external accounts)
 
-### 4. Run
+For `@gmail.com` or any account you can't delegate via service account.
+
+1. GCP Console → APIs & Services → Credentials → **Create OAuth client ID** (Desktop app)
+2. Download as `client_secret.json`
+3. Authenticate:
+
+```bash
+export GMAIL_OAUTH_CREDENTIALS=./client_secret.json
+
+# One-time per email — opens browser for consent
+bun run src/mcp/cli.ts --auth elya.livshitz@gmail.com
+```
+
+Tokens are stored in `~/.mcp-gmail/tokens/{email}.json` and auto-refresh.
+
+You can also set `GMAIL_OAUTH_CLIENT_ID` + `GMAIL_OAUTH_CLIENT_SECRET` instead of a credentials file.
+
+### Mixed mode
+
+Both auth methods work simultaneously. Service account is tried first; if it fails (e.g. personal Gmail), falls back to stored OAuth token.
+
+```bash
+# Workspace accounts use service account delegation
+get_gmail_messages(user_email: "agent@7chairs.org")
+
+# Personal accounts use stored OAuth token
+get_gmail_messages(user_email: "elya.livshitz@gmail.com")
+```
+
+## Run
 
 ```bash
 bun install
 
-# MCP stdio mode (for Claude Code / Unclaw)
+# MCP stdio mode (for Claude Code / Cursor / Unclaw)
 bun run src/mcp/cli.ts --stdio
 
 # HTTP mode (for testing / direct API)
 bun run src/mcp/cli.ts --http --port 3461
+
+# Authenticate a personal Gmail account
+bun run src/mcp/cli.ts --auth <email>
 ```
 
 ## Tools
@@ -58,19 +77,7 @@ bun run src/mcp/cli.ts --http --port 3461
 | `post_gmail_draft` | POST | Create draft |
 | `post_gmail_labels` | POST | Add/remove labels from a message |
 
-## Multi-account
-
-All tools accept an optional `user_email` parameter. One MCP instance can serve multiple Gmail accounts in the same Workspace domain — no need to run separate instances.
-
-```
-# Read elya's inbox
-get_gmail_messages(user_email: "elya.l@7chairs.org", q: "is:unread")
-
-# Send as agent
-post_gmail_send(user_email: "agent@7chairs.org", to: "...", subject: "...", body: "...")
-```
-
-If `user_email` is omitted, falls back to `GMAIL_USER_EMAIL`. All target users must be in the same Google Workspace domain with the service account's delegation scope authorized.
+All tools accept an optional `user_email` parameter for multi-account support.
 
 ## Search syntax
 
@@ -82,6 +89,14 @@ subject:invoice has:attachment
 to:me after:2026/01/01
 ```
 
-## Auth note
+## Environment
 
-Requires `edge.libx.js` ≥0.5.4 — the `JwtHelper.generateOAuth` method needs `options.sub` support to set the JWT `sub` claim for domain-wide delegation (impersonating a user different from the service account).
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_SERVICE_ACCOUNT` | For Workspace | Path or inline JSON to service account key |
+| `GMAIL_USER_EMAIL` | No | Default email (fallback when `user_email` not passed) |
+| `GMAIL_OAUTH_CREDENTIALS` | For OAuth | Path to `client_secret.json` |
+| `GMAIL_OAUTH_CLIENT_ID` | For OAuth | Alternative to credentials file |
+| `GMAIL_OAUTH_CLIENT_SECRET` | For OAuth | Alternative to credentials file |
+| `MCP_GMAIL_SPOOL_THRESHOLD` | No | Char limit before spooling to disk (default 12000) |
+| `MCP_GMAIL_CACHE_DIR` | No | Spool directory (default `.mcp-gmail/cache/`) |

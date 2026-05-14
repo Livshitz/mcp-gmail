@@ -41,6 +41,8 @@ All users must be in the same Google Workspace domain with delegation authorized
 5. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
 6. For multi-account: pass `user_email` on each call, or set `GMAIL_USER_EMAIL` as default
 
-## Environment
-- `GOOGLE_SERVICE_ACCOUNT` — path or inline JSON (shared with mcp-google-drive)
-- `GMAIL_USER_EMAIL` — default impersonated user (optional if user_email is always passed)
+## Auth
+- **Workspace**: `GOOGLE_SERVICE_ACCOUNT` (service account + domain-wide delegation)
+- **Personal Gmail**: `GMAIL_OAUTH_CREDENTIALS` (OAuth2 — run `--auth <email>` once to store refresh token)
+- Both work simultaneously; service account tried first, falls back to OAuth
+- `GMAIL_USER_EMAIL` — default account (optional if user_email is always passed)
