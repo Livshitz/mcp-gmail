@@ -24,7 +24,7 @@ Gmail API MCP server using service account + domain-wide delegation. No OAuth co
 # Path to JSON key file, or inline JSON string
 export GOOGLE_SERVICE_ACCOUNT=./secrets/google-service-account.json
 
-# The Workspace user to impersonate
+# Default Workspace user to impersonate (optional if user_email is always passed per-call)
 export GMAIL_USER_EMAIL=agent@yourdomain.com
 ```
 
@@ -57,6 +57,20 @@ bun run src/mcp/cli.ts --http --port 3461
 | `post_gmail_reply` | POST | Reply-all to thread (`threadId`, `messageId`, `body`). Auto-includes all To/CC participants. Override with explicit `to`/`cc`. |
 | `post_gmail_draft` | POST | Create draft |
 | `post_gmail_labels` | POST | Add/remove labels from a message |
+
+## Multi-account
+
+All tools accept an optional `user_email` parameter. One MCP instance can serve multiple Gmail accounts in the same Workspace domain — no need to run separate instances.
+
+```
+# Read elya's inbox
+get_gmail_messages(user_email: "elya.l@7chairs.org", q: "is:unread")
+
+# Send as agent
+post_gmail_send(user_email: "agent@7chairs.org", to: "...", subject: "...", body: "...")
+```
+
+If `user_email` is omitted, falls back to `GMAIL_USER_EMAIL`. All target users must be in the same Google Workspace domain with the service account's delegation scope authorized.
 
 ## Search syntax
 

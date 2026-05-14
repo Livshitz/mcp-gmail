@@ -1,11 +1,11 @@
 ---
 name: mcp-gmail
 description: >-
-  Gmail API MCP server — read, search, compose, send, reply, draft, manage labels
-  for agent@7chairs.org via service account delegation.
+  Gmail API MCP server — read, search, compose, send, reply, draft, manage labels.
+  Supports multiple accounts via user_email param (domain-wide delegation).
 when_to_use: >-
   mcp-gmail, Gmail, email, send email, read email, compose, reply, draft, labels,
-  GMAIL_USER_EMAIL, agent@7chairs.org
+  GMAIL_USER_EMAIL, user_email, multi-account
 paths: "src/**/*.ts,package.json"
 ---
 
@@ -15,8 +15,12 @@ paths: "src/**/*.ts,package.json"
 - **Entry**: `src/mcp/cli.ts` — `--stdio` (default) or `--http` (port 3461)
 - **App factory**: `createGmailMcp()` in `src/app.ts`
 - **API**: `gmailApi()` in `src/gmail-api.ts` — fetch-based, no SDK
-- **Auth**: Service account + domain-wide delegation via `src/auth.ts`
+- **Auth**: Service account + domain-wide delegation via `src/auth.ts`. Per-user token cache.
 - **Large JSON**: `inlineOrSpool()` over threshold (default 12_000 chars)
+
+## Multi-account
+All tools accept an optional `user_email` param. If omitted, defaults to `GMAIL_USER_EMAIL`.
+All users must be in the same Google Workspace domain with delegation authorized for the service account.
 
 ## MCP tool names
 - `get_gmail_labels` — list all labels
@@ -35,7 +39,8 @@ paths: "src/**/*.ts,package.json"
 3. For replies, pass both `threadId` and `messageId` — headers are auto-set
 4. `full=true` on any GET returns raw Gmail API payload (may spool to disk)
 5. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
+6. For multi-account: pass `user_email` on each call, or set `GMAIL_USER_EMAIL` as default
 
 ## Environment
 - `GOOGLE_SERVICE_ACCOUNT` — path or inline JSON (shared with mcp-google-drive)
-- `GMAIL_USER_EMAIL` — impersonated user (e.g. `agent@7chairs.org`)
+- `GMAIL_USER_EMAIL` — default impersonated user (optional if user_email is always passed)

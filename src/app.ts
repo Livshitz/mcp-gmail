@@ -3,6 +3,7 @@ import { json } from 'itty-router';
 import { RouterWrapper } from 'edge.libx.js/build/main.js';
 import { augmentMcpWithSkillResource } from './mcp/with-skill-resource.ts';
 import { gmailApi } from './gmail-api.ts';
+import { resolveUserEmail, getDefaultUserEmail } from './auth.ts';
 import { parseMessage } from './parse.ts';
 import { buildRawMessage } from './mime.ts';
 import { slimMessages, slimThread } from './slim.ts';
@@ -27,6 +28,8 @@ function truthyFull(req: { url: string; query?: Record<string, unknown> }): bool
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+const USER_EMAIL_PARAM = { description: 'Email to act as (defaults to GMAIL_USER_EMAIL env var). For multi-account, pass the target email.', type: 'string' };
+
 export function createGmailMcp() {
   const base = RouterWrapper.getNew('', {
     origin: '*',
@@ -38,12 +41,13 @@ export function createGmailMcp() {
   // ── GET /gmail/labels ──
   base.describeMCP('/gmail/labels', 'GET', {
     description: 'List all Gmail labels (INBOX, SENT, custom labels, etc).',
-    params: {},
+    params: { user_email: USER_EMAIL_PARAM },
     annotations: { readOnlyHint: true },
   });
-  router.get('/gmail/labels', async () => {
+  router.get('/gmail/labels', async (req) => {
     try {
-      const data = await gmailApi('labels');
+      const ue = qp(req, 'user_email');
+      const data = await gmailApi('labels', { userEmail: ue });
       return json(inlineOrSpool('get_gmail_labels', data));
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -60,11 +64,13 @@ export function createGmailMcp() {
       maxResults: { description: 'Max messages to return (default 20, max 100)', type: 'string' },
       pageToken: { description: 'Pagination token from previous response', type: 'string' },
       full: { description: 'Set to true to include full message payloads (slower)', type: 'string' },
+      user_email: USER_EMAIL_PARAM,
     },
     annotations: { readOnlyHint: true },
   });
   router.get('/gmail/messages', async (req) => {
     try {
+      const ue = qp(req, 'user_email');
       const maxResults = Math.min(parseInt(qp(req, 'maxResults') ?? '20', 10) || 20, 100);
       const query: Record<string, string> = { maxResults: String(maxResults) };
       const q = qp(req, 'q');
@@ -74,14 +80,14 @@ export function createGmailMcp() {
       const pageToken = qp(req, 'pageToken');
       if (pageToken) query.pageToken = pageToken;
 
-      const list = await gmailApi<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string; resultSizeEstimate?: number }>('messages', { query });
+      const list = await gmailApi<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string; resultSizeEstimate?: number }>('messages', { query, userEmail: ue });
 
       if (!list.messages?.length) return json({ messages: [], resultSizeEstimate: 0 });
 
       const full = truthyFull(req);
       if (!full) {
         const batch = await Promise.all(
-          list.messages.map((m) => gmailApi(`messages/${m.id}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' } })),
+          list.messages.map((m) => gmailApi(`messages/${m.id}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Subject,Date' }, userEmail: ue })),
         );
         return json(inlineOrSpool('get_gmail_messages', {
           messages: slimMessages(batch),
@@ -91,7 +97,7 @@ export function createGmailMcp() {
       }
 
       const batch = await Promise.all(
-        list.messages.map((m) => gmailApi(`messages/${m.id}`, { query: { format: 'full' } })),
+        list.messages.map((m) => gmailApi(`messages/${m.id}`, { query: { format: 'full' }, userEmail: ue })),
       );
       return json(inlineOrSpool('get_gmail_messages', {
         messages: batch.map(parseMessage),
@@ -109,6 +115,7 @@ export function createGmailMcp() {
     params: {
       id: { description: 'Message ID', type: 'string' },
       full: { description: 'Set to true for raw Gmail API payload', type: 'string' },
+      user_email: USER_EMAIL_PARAM,
     },
     annotations: { readOnlyHint: true },
   });
@@ -116,7 +123,8 @@ export function createGmailMcp() {
     try {
       const { id } = req.params ?? {};
       if (!id) return json({ error: 'id is required' }, { status: 400 });
-      const msg = await gmailApi(`messages/${id}`, { query: { format: 'full' } });
+      const ue = qp(req, 'user_email');
+      const msg = await gmailApi(`messages/${id}`, { query: { format: 'full' }, userEmail: ue });
       const out = truthyFull(req) ? msg : parseMessage(msg);
       return json(inlineOrSpool('get_gmail_message_by_id', out));
     } catch (e) {
@@ -132,11 +140,13 @@ export function createGmailMcp() {
       labelIds: { description: 'Comma-separated label IDs', type: 'string' },
       maxResults: { description: 'Max threads (default 20, max 100)', type: 'string' },
       pageToken: { description: 'Pagination token', type: 'string' },
+      user_email: USER_EMAIL_PARAM,
     },
     annotations: { readOnlyHint: true },
   });
   router.get('/gmail/threads', async (req) => {
     try {
+      const ue = qp(req, 'user_email');
       const maxResults = Math.min(parseInt(qp(req, 'maxResults') ?? '20', 10) || 20, 100);
       const query: Record<string, string> = { maxResults: String(maxResults) };
       const q = qp(req, 'q');
@@ -146,7 +156,7 @@ export function createGmailMcp() {
       const pageToken = qp(req, 'pageToken');
       if (pageToken) query.pageToken = pageToken;
 
-      const data = await gmailApi('threads', { query });
+      const data = await gmailApi('threads', { query, userEmail: ue });
       return json(inlineOrSpool('get_gmail_threads', data));
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -159,6 +169,7 @@ export function createGmailMcp() {
     params: {
       id: { description: 'Thread ID', type: 'string' },
       full: { description: 'Set to true for raw Gmail API payload', type: 'string' },
+      user_email: USER_EMAIL_PARAM,
     },
     annotations: { readOnlyHint: true },
   });
@@ -166,7 +177,8 @@ export function createGmailMcp() {
     try {
       const { id } = req.params ?? {};
       if (!id) return json({ error: 'id is required' }, { status: 400 });
-      const thread = await gmailApi(`threads/${id}`, { query: { format: 'full' } });
+      const ue = qp(req, 'user_email');
+      const thread = await gmailApi(`threads/${id}`, { query: { format: 'full' }, userEmail: ue });
       const out = truthyFull(req) ? thread : slimThread(thread);
       return json(inlineOrSpool('get_gmail_thread_by_id', out));
     } catch (e) {
@@ -177,10 +189,10 @@ export function createGmailMcp() {
   // ── POST /gmail/send ──
   base.describeMCP('/gmail/send', 'POST', {
     description:
-      'Compose and send an email. Body: { to, subject, body, cc?, bcc?, html? }. Sends from the configured GMAIL_USER_EMAIL.',
+      'Compose and send an email. Body: { to, subject, body, cc?, bcc?, html?, user_email? }. Sends from user_email or GMAIL_USER_EMAIL.',
     params: {
       body: {
-        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string }',
+        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string }',
         type: 'object',
       },
     },
@@ -192,9 +204,9 @@ export function createGmailMcp() {
       if (!data.to || !data.subject || !data.body)
         return json({ error: 'to, subject, and body are required' }, { status: 400 });
 
-      const from = process.env.GMAIL_USER_EMAIL ?? '';
-      const raw = buildRawMessage({ from, ...data } as any);
-      const result = await gmailApi('messages/send', { method: 'POST', body: { raw } });
+      const from = resolveUserEmail(data.user_email);
+      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html });
+      const result = await gmailApi('messages/send', { method: 'POST', body: { raw }, userEmail: from });
       return json({ ok: true, id: result.id, threadId: result.threadId });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -204,10 +216,10 @@ export function createGmailMcp() {
   // ── POST /gmail/reply ──
   base.describeMCP('/gmail/reply', 'POST', {
     description:
-      'Reply-all to an existing thread. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Body: { threadId, messageId, body, html?, to?, cc?, bcc? }.',
+      'Reply-all to an existing thread. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Body: { threadId, messageId, body, html?, to?, cc?, bcc?, user_email? }.',
     params: {
       body: {
-        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string }',
+        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string, user_email?: string }',
         type: 'object',
       },
     },
@@ -219,11 +231,11 @@ export function createGmailMcp() {
       if (!data.threadId || !data.messageId || !data.body)
         return json({ error: 'threadId, messageId, and body are required' }, { status: 400 });
 
-      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Cc,Subject,Message-ID' } });
+      const from = resolveUserEmail(data.user_email);
+      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Cc,Subject,Message-ID' }, userEmail: from });
       const headers = orig.payload?.headers ?? [];
       const h = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
-      const from = process.env.GMAIL_USER_EMAIL ?? '';
       const selfLower = from.toLowerCase();
       const filterSelf = (addrs: string) => addrs.split(',').map(a => a.trim()).filter(a => !a.toLowerCase().includes(selfLower)).join(', ');
 
@@ -242,7 +254,7 @@ export function createGmailMcp() {
         inReplyTo: h('Message-ID'),
         references: h('Message-ID'),
       });
-      const result = await gmailApi('messages/send', { method: 'POST', body: { raw, threadId: data.threadId } });
+      const result = await gmailApi('messages/send', { method: 'POST', body: { raw, threadId: data.threadId }, userEmail: from });
       return json({ ok: true, id: result.id, threadId: result.threadId });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -251,10 +263,10 @@ export function createGmailMcp() {
 
   // ── POST /gmail/drafts ──
   base.describeMCP('/gmail/drafts', 'POST', {
-    description: 'Create a draft email. Body: { to, subject, body, cc?, bcc?, html? }.',
+    description: 'Create a draft email. Body: { to, subject, body, cc?, bcc?, html?, user_email? }.',
     params: {
       body: {
-        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string }',
+        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string }',
         type: 'object',
       },
     },
@@ -266,9 +278,9 @@ export function createGmailMcp() {
       if (!data.to || !data.subject || !data.body)
         return json({ error: 'to, subject, and body are required' }, { status: 400 });
 
-      const from = process.env.GMAIL_USER_EMAIL ?? '';
-      const raw = buildRawMessage({ from, ...data } as any);
-      const result = await gmailApi('drafts', { method: 'POST', body: { message: { raw } } });
+      const from = resolveUserEmail(data.user_email);
+      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html });
+      const result = await gmailApi('drafts', { method: 'POST', body: { message: { raw } }, userEmail: from });
       return json({ ok: true, id: result.id, message: result.message });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -277,11 +289,11 @@ export function createGmailMcp() {
 
   // ── POST /gmail/messages/:id/labels ──
   base.describeMCP('/gmail/messages/:id/labels', 'POST', {
-    description: 'Add or remove labels from a message. Body: { addLabelIds?: string[], removeLabelIds?: string[] }.',
+    description: 'Add or remove labels from a message. Body: { addLabelIds?: string[], removeLabelIds?: string[], user_email?: string }.',
     params: {
       id: { description: 'Message ID', type: 'string' },
       body: {
-        description: '{ addLabelIds?: string[], removeLabelIds?: string[] }',
+        description: '{ addLabelIds?: string[], removeLabelIds?: string[], user_email?: string }',
         type: 'object',
       },
     },
@@ -291,8 +303,9 @@ export function createGmailMcp() {
     try {
       const { id } = req.params ?? {};
       if (!id) return json({ error: 'id is required' }, { status: 400 });
-      const data = (await req.json()) as Record<string, string[]>;
-      const result = await gmailApi(`messages/${id}/modify`, { method: 'POST', body: data });
+      const data = (await req.json()) as Record<string, any>;
+      const ue = data.user_email;
+      const result = await gmailApi(`messages/${id}/modify`, { method: 'POST', body: { addLabelIds: data.addLabelIds, removeLabelIds: data.removeLabelIds }, userEmail: ue });
       return json({ ok: true, id: result.id, labelIds: result.labelIds });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -301,14 +314,16 @@ export function createGmailMcp() {
 
   base.catchNotFound();
 
+  const defaultEmail = getDefaultUserEmail();
   const mcp = base.asMCP({
     name: 'mcp-gmail',
-    version: '0.1.0',
+    version: '0.2.0',
     instructions:
-      'Gmail API MCP for agent@7chairs.org. Read, search, compose, send, reply, draft, and manage labels. ' +
+      `Gmail API MCP${defaultEmail ? ` (default: ${defaultEmail})` : ''}. Read, search, compose, send, reply, draft, and manage labels. ` +
+      'Supports multiple accounts — pass user_email to act as a different user (requires domain-wide delegation). ' +
       'Use Gmail search syntax for q param (e.g. "from:alice is:unread newer_than:1d"). ' +
       'get_gmail_messages returns slim list — use get_gmail_message_by_id for full content. ' +
-      'Replies auto-set In-Reply-To/References headers. All tools spool large results to disk.',
+      'Replies auto-include all To/CC participants (reply-all). All tools spool large results to disk.',
   });
 
   augmentMcpWithSkillResource(mcp, {

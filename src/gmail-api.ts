@@ -4,9 +4,9 @@ const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
 export async function gmailApi<T = any>(
   path: string,
-  opts?: { method?: string; body?: unknown; query?: Record<string, string> },
+  opts?: { method?: string; body?: unknown; query?: Record<string, string>; userEmail?: string },
 ): Promise<T> {
-  const token = await getAccessToken();
+  const token = await getAccessToken(opts?.userEmail);
   const method = opts?.method ?? 'GET';
   const url = new URL(`${BASE}/${path}`);
   if (opts?.query) {
