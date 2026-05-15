@@ -227,10 +227,10 @@ export function createGmailMcp() {
   // ── POST /gmail/send ──
   base.describeMCP('/gmail/send', 'POST', {
     description:
-      'Compose and send an email. Body: { to, subject, body, cc?, bcc?, html?, user_email? }. Sends from user_email or GMAIL_USER_EMAIL.',
+      'Compose and send an email. Body: { to, subject, body, cc?, bcc?, html?, user_email?, threadId?, inReplyTo? }. Sends from user_email or GMAIL_USER_EMAIL. Set threadId + inReplyTo to keep the message in an existing thread.',
     params: {
       body: {
-        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string }',
+        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string, threadId?: string, inReplyTo?: string }',
         type: 'object',
       },
     },
@@ -243,8 +243,10 @@ export function createGmailMcp() {
         return json({ error: 'to, subject, and body are required' }, { status: 400 });
 
       const from = resolveUserEmail(data.user_email);
-      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html });
-      const result = await gmailApi('messages/send', { method: 'POST', body: { raw }, userEmail: from });
+      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html, inReplyTo: data.inReplyTo, references: data.inReplyTo });
+      const sendBody: Record<string, string> = { raw };
+      if (data.threadId) sendBody.threadId = data.threadId;
+      const result = await gmailApi('messages/send', { method: 'POST', body: sendBody, userEmail: from });
       return json({ ok: true, id: result.id, threadId: result.threadId });
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
@@ -270,7 +272,7 @@ export function createGmailMcp() {
         return json({ error: 'threadId, messageId, and body are required' }, { status: 400 });
 
       const from = resolveUserEmail(data.user_email);
-      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'metadata', metadataHeaders: 'From,To,Cc,Subject,Message-ID' }, userEmail: from });
+      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'metadata', metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID'] }, userEmail: from });
       const headers = orig.payload?.headers ?? [];
       const h = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
