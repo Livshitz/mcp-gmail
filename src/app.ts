@@ -327,6 +327,53 @@ export function createGmailMcp() {
     }
   });
 
+  // ── POST /gmail/batch-modify ──
+  base.describeMCP('/gmail/batch-modify', 'POST', {
+    description:
+      'Batch add/remove labels on messages matching a Gmail search query. Use for bulk operations like "mark all unread as read". ' +
+      'Body: { q: string, addLabelIds?: string[], removeLabelIds?: string[], user_email?: string }. ' +
+      'Fetches up to 500 matching message IDs and modifies in one API call. Returns count of modified messages.',
+    params: {
+      body: {
+        description: '{ q: string, addLabelIds?: string[], removeLabelIds?: string[], user_email?: string }',
+        type: 'object',
+      },
+    },
+    annotations: { destructiveHint: false },
+  });
+  router.post('/gmail/batch-modify', async (req) => {
+    try {
+      const data = (await req.json()) as Record<string, any>;
+      if (!data.q) return json({ error: 'q (search query) is required' }, { status: 400 });
+      if (!data.addLabelIds?.length && !data.removeLabelIds?.length)
+        return json({ error: 'at least one of addLabelIds or removeLabelIds is required' }, { status: 400 });
+
+      const ue = data.user_email;
+      const ids: string[] = [];
+      let pageToken: string | undefined;
+
+      do {
+        const query: Record<string, string> = { q: data.q, maxResults: '500' };
+        if (pageToken) query.pageToken = pageToken;
+        const list = await gmailApi<{ messages?: { id: string }[]; nextPageToken?: string }>('messages', { query, userEmail: ue });
+        if (list.messages) ids.push(...list.messages.map(m => m.id));
+        pageToken = list.nextPageToken;
+      } while (pageToken && ids.length < 1000);
+
+      if (!ids.length) return json({ ok: true, modified: 0, message: 'No messages matched query' });
+
+      await gmailApi('messages/batchModify', {
+        method: 'POST',
+        body: { ids, addLabelIds: data.addLabelIds, removeLabelIds: data.removeLabelIds },
+        userEmail: ue,
+      });
+
+      return json({ ok: true, modified: ids.length });
+    } catch (e) {
+      return json({ error: errMessage(e) }, { status: 500 });
+    }
+  });
+
   // ── POST /gmail/messages/:id/labels ──
   base.describeMCP('/gmail/messages/:id/labels', 'POST', {
     description: 'Add or remove labels from a message. Body: { addLabelIds?: string[], removeLabelIds?: string[], user_email?: string }.',
@@ -364,7 +411,9 @@ export function createGmailMcp() {
       'Start with get_gmail_accounts for a quick overview of all accounts, unread counts, and recent subjects. ' +
       'Use Gmail search syntax for q param (e.g. "from:alice is:unread newer_than:1d"). ' +
       'get_gmail_messages returns cached slim list — use get_gmail_message_by_id for full content. ' +
-      'Replies auto-include all To/CC participants (reply-all). All tools spool large results to disk.',
+      'Replies auto-include all To/CC participants (reply-all). ' +
+      'Use post_gmail_batch_modify for bulk label operations (e.g. mark all unread as read in one call). ' +
+      'All tools spool large results to disk.',
   });
 
   augmentMcpWithSkillResource(mcp, {

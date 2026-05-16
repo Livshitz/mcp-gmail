@@ -40,7 +40,8 @@ Workspace users need domain-wide delegation. Personal Gmail uses OAuth2 (`--auth
 - `post_gmail_send` — compose and send (to, subject, body, cc, bcc, html)
 - `post_gmail_reply` — reply-all to thread (threadId, messageId, body). Auto-includes To/CC participants; override with explicit to/cc
 - `post_gmail_draft` — create draft
-- `post_gmail_labels` — add/remove labels from a message
+- `post_gmail_batch_modify` — bulk add/remove labels by search query (e.g. mark all unread as read in one call)
+- `post_gmail_labels` — add/remove labels from a single message
 
 ## Best practices
 1. Call `get_gmail_accounts` first for a quick overview of all accounts + unread counts
@@ -48,7 +49,8 @@ Workspace users need domain-wide delegation. Personal Gmail uses OAuth2 (`--auth
 3. `get_gmail_messages` returns cached slim list — use `get_gmail_message_by_id` for full content
 4. For replies, pass both `threadId` and `messageId` — headers are auto-set
 5. `full=true` on any GET returns raw Gmail API payload (may spool to disk)
-6. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
+6. For bulk label changes, use `post_gmail_batch_modify` with a query (e.g. `q: "is:unread"`) — one call instead of per-message
+7. Labels use IDs not names (INBOX, SENT, UNREAD, or custom label IDs)
 7. For multi-account: pass `user_email` on each call, or set `GMAIL_USER_EMAIL` as default
 
 ## Auth
