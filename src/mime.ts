@@ -10,6 +10,11 @@ export interface MessageOpts {
   references?: string;
 }
 
+function plainToHtml(text: string): string {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<div style="font-family:sans-serif;font-size:14px">${escaped.replace(/\n/g, '<br>')}</div>`;
+}
+
 export function buildRawMessage(opts: MessageOpts): string {
   const boundary = `----=_Part_${Date.now()}`;
   const lines: string[] = [
@@ -23,14 +28,11 @@ export function buildRawMessage(opts: MessageOpts): string {
   if (opts.references) lines.push(`References: ${opts.references}`);
   lines.push(`MIME-Version: 1.0`);
 
-  if (opts.html) {
-    lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`, '');
-    lines.push(`--${boundary}`, 'Content-Type: text/plain; charset=utf-8', '', opts.body);
-    lines.push(`--${boundary}`, 'Content-Type: text/html; charset=utf-8', '', opts.html);
-    lines.push(`--${boundary}--`);
-  } else {
-    lines.push('Content-Type: text/plain; charset=utf-8', '', opts.body);
-  }
+  const html = opts.html || plainToHtml(opts.body);
+  lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`, '');
+  lines.push(`--${boundary}`, 'Content-Type: text/plain; charset=utf-8', '', opts.body);
+  lines.push(`--${boundary}`, 'Content-Type: text/html; charset=utf-8', '', html);
+  lines.push(`--${boundary}--`);
 
   const raw = lines.join('\r\n');
   return Buffer.from(raw).toString('base64url');
