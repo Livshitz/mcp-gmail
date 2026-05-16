@@ -37,9 +37,9 @@ Workspace users need domain-wide delegation. Personal Gmail uses OAuth2 (`--auth
 - `get_gmail_message_by_id` — full message with parsed body + attachments
 - `get_gmail_threads` — list threads
 - `get_gmail_thread_by_id` — full thread with all messages
-- `post_gmail_send` — compose and send (to, subject, body, cc, bcc, html)
-- `post_gmail_reply` — reply-all to thread (threadId, messageId, body). Auto-includes To/CC participants; override with explicit to/cc
-- `post_gmail_draft` — create draft
+- `post_gmail_send` — compose and send (to, subject, body, cc, bcc, html, attachments). Attachments: `[{path, filename?, mimeType?}]` — reads files from local filesystem.
+- `post_gmail_reply` — reply-all to thread (threadId, messageId, body, attachments). Auto-includes To/CC participants; override with explicit to/cc
+- `post_gmail_draft` — create draft (supports attachments)
 - `post_gmail_batch_modify` — bulk add/remove labels by search query (e.g. mark all unread as read in one call)
 - `post_gmail_labels` — add/remove labels from a single message
 

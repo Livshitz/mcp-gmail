@@ -227,10 +227,10 @@ export function createGmailMcp() {
   // ── POST /gmail/send ──
   base.describeMCP('/gmail/send', 'POST', {
     description:
-      'Compose and send an email. Body: { to, subject, body, cc?, bcc?, html?, user_email?, threadId?, inReplyTo? }. Sends from user_email or GMAIL_USER_EMAIL. Set threadId + inReplyTo to keep the message in an existing thread.',
+      'Compose and send an email. Supports file attachments via local file paths. Body: { to, subject, body, cc?, bcc?, html?, user_email?, threadId?, inReplyTo?, attachments?: [{path, filename?, mimeType?}] }. Sends from user_email or GMAIL_USER_EMAIL. Set threadId + inReplyTo to keep the message in an existing thread.',
     params: {
       body: {
-        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string, threadId?: string, inReplyTo?: string }',
+        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string, threadId?: string, inReplyTo?: string, attachments?: Array<{path: string, filename?: string, mimeType?: string}> }',
         type: 'object',
       },
     },
@@ -243,7 +243,7 @@ export function createGmailMcp() {
         return json({ error: 'to, subject, and body are required' }, { status: 400 });
 
       const from = resolveUserEmail(data.user_email);
-      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html, inReplyTo: data.inReplyTo, references: data.inReplyTo });
+      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html, inReplyTo: data.inReplyTo, references: data.inReplyTo, attachments: data.attachments });
       const sendBody: Record<string, string> = { raw };
       if (data.threadId) sendBody.threadId = data.threadId;
       const result = await gmailApi('messages/send', { method: 'POST', body: sendBody, userEmail: from });
@@ -256,10 +256,10 @@ export function createGmailMcp() {
   // ── POST /gmail/reply ──
   base.describeMCP('/gmail/reply', 'POST', {
     description:
-      'Reply-all to an existing thread. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Body: { threadId, messageId, body, html?, to?, cc?, bcc?, user_email? }.',
+      'Reply-all to an existing thread. Supports file attachments. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Body: { threadId, messageId, body, html?, to?, cc?, bcc?, user_email?, attachments?: [{path, filename?, mimeType?}] }.',
     params: {
       body: {
-        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string, user_email?: string }',
+        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string, user_email?: string, attachments?: Array<{path: string, filename?: string, mimeType?: string}> }',
         type: 'object',
       },
     },
@@ -293,6 +293,7 @@ export function createGmailMcp() {
         html: data.html,
         inReplyTo: h('Message-ID'),
         references: h('Message-ID'),
+        attachments: data.attachments,
       });
       const result = await gmailApi('messages/send', { method: 'POST', body: { raw, threadId: data.threadId }, userEmail: from });
       return json({ ok: true, id: result.id, threadId: result.threadId });
@@ -303,10 +304,10 @@ export function createGmailMcp() {
 
   // ── POST /gmail/drafts ──
   base.describeMCP('/gmail/drafts', 'POST', {
-    description: 'Create a draft email. Body: { to, subject, body, cc?, bcc?, html?, user_email? }.',
+    description: 'Create a draft email. Supports file attachments. Body: { to, subject, body, cc?, bcc?, html?, user_email?, attachments?: [{path, filename?, mimeType?}] }.',
     params: {
       body: {
-        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string }',
+        description: '{ to: string, subject: string, body: string, cc?: string, bcc?: string, html?: string, user_email?: string, attachments?: Array<{path: string, filename?: string, mimeType?: string}> }',
         type: 'object',
       },
     },
@@ -319,7 +320,7 @@ export function createGmailMcp() {
         return json({ error: 'to, subject, and body are required' }, { status: 400 });
 
       const from = resolveUserEmail(data.user_email);
-      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html });
+      const raw = buildRawMessage({ from, to: data.to, cc: data.cc, bcc: data.bcc, subject: data.subject, body: data.body, html: data.html, attachments: data.attachments });
       const result = await gmailApi('drafts', { method: 'POST', body: { message: { raw } }, userEmail: from });
       return json({ ok: true, id: result.id, message: result.message });
     } catch (e) {
