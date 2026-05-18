@@ -1,10 +1,10 @@
 ---
 name: mcp-gmail
 description: >-
-  Gmail API MCP server — read, search, compose, send, reply, draft, manage labels.
+  Gmail API MCP server — read, search, compose, send, reply, draft, manage labels, manage filters (rules).
   Multi-account (service account + OAuth). Smart cache with dashboard CLI.
 when_to_use: >-
-  mcp-gmail, Gmail, email, send email, read email, compose, reply, draft, labels,
+  mcp-gmail, Gmail, email, send email, read email, compose, reply, draft, labels, filters, rules,
   GMAIL_USER_EMAIL, user_email, multi-account, dashboard
 paths: "src/**/*.ts,package.json"
 ---
@@ -42,6 +42,9 @@ Workspace users need domain-wide delegation. Personal Gmail uses OAuth2 (`--auth
 - `post_gmail_draft` — create draft (supports attachments)
 - `post_gmail_batch_modify` — bulk add/remove labels by search query (e.g. mark all unread as read in one call)
 - `post_gmail_labels` — add/remove labels from a single message
+- `get_gmail_filters` — list all filters (rules)
+- `post_gmail_filters` — create a filter (criteria + action). Use label IDs, not display names.
+- `post_gmail_filters_delete` — delete a filter by ID
 
 ## Best practices
 1. Call `get_gmail_accounts` first for a quick overview of all accounts + unread counts

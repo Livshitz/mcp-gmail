@@ -400,6 +400,63 @@ export function createGmailMcp() {
     }
   });
 
+  // ── GET /gmail/filters ──
+  base.describeMCP('/gmail/filters', 'GET', {
+    description: 'List all Gmail filters (rules) for the account. Query: { user_email? }',
+    params: { user_email: { description: 'Account to act as (optional)', type: 'string' } },
+    annotations: { readOnlyHint: true },
+  });
+
+  router.get('/gmail/filters', async (req) => {
+    try {
+      const ue = new URL(req.url).searchParams.get('user_email') ?? undefined;
+      const result = await gmailApi<{ filter?: any[] }>('settings/filters', { userEmail: ue });
+      return json(inlineOrSpool('filters', result.filter ?? []));
+    } catch (e) {
+      return json({ error: errMessage(e) }, { status: 500 });
+    }
+  });
+
+  // ── POST /gmail/filters ──
+  base.describeMCP('/gmail/filters', 'POST', {
+    description:
+      'Create a Gmail filter (rule). Body: { criteria: { from?, to?, subject?, query?, negatedQuery?, hasAttachment?, excludeChats?, size?, sizeComparison? }, action: { addLabelIds?, removeLabelIds?, forward? }, user_email? }. ' +
+      'Use label IDs (e.g. "INBOX","UNREAD","TRASH","Label_123"), not display names. Common: removeLabelIds:["INBOX"] to archive, removeLabelIds:["UNREAD"] to mark read.',
+    params: { body: { description: '{ criteria, action, user_email? }', type: 'object' } },
+    annotations: { destructiveHint: false },
+  });
+
+  router.post('/gmail/filters', async (req) => {
+    try {
+      const data = (await req.json()) as Record<string, any>;
+      const { criteria, action, user_email: ue } = data;
+      if (!criteria || !Object.keys(criteria).length) return json({ error: 'criteria is required (at least one field)' }, { status: 400 });
+      if (!action || !Object.keys(action).length) return json({ error: 'action is required (at least one field)' }, { status: 400 });
+      const result = await gmailApi('settings/filters', { method: 'POST', body: { criteria, action }, userEmail: ue });
+      return json({ ok: true, filter: result });
+    } catch (e) {
+      return json({ error: errMessage(e) }, { status: 500 });
+    }
+  });
+
+  // ── POST /gmail/filters/delete ──
+  base.describeMCP('/gmail/filters/delete', 'POST', {
+    description: 'Delete a Gmail filter by ID. Body: { id, user_email? }. Get filter IDs from get_gmail_filters.',
+    params: { body: { description: '{ id: string, user_email? }', type: 'object' } },
+    annotations: { destructiveHint: true },
+  });
+
+  router.post('/gmail/filters/delete', async (req) => {
+    try {
+      const data = (await req.json()) as Record<string, any>;
+      if (!data.id) return json({ error: 'id is required' }, { status: 400 });
+      await gmailApi(`settings/filters/${data.id}`, { method: 'DELETE', userEmail: data.user_email });
+      return json({ ok: true, deleted: data.id });
+    } catch (e) {
+      return json({ error: errMessage(e) }, { status: 500 });
+    }
+  });
+
   base.catchNotFound();
 
   const defaultEmail = getDefaultUserEmail();
@@ -407,7 +464,7 @@ export function createGmailMcp() {
     name: 'mcp-gmail',
     version: '0.4.0',
     instructions:
-      `Gmail API MCP${defaultEmail ? ` (default: ${defaultEmail})` : ''}. Read, search, compose, send, reply, draft, and manage labels. ` +
+      `Gmail API MCP${defaultEmail ? ` (default: ${defaultEmail})` : ''}. Read, search, compose, send, reply, draft, manage labels, and manage filters (rules). ` +
       'Supports multiple accounts (Workspace + personal Gmail) — pass user_email to act as a different user. ' +
       'Start with get_gmail_accounts for a quick overview of all accounts, unread counts, and recent subjects. ' +
       'Use Gmail search syntax for q param (e.g. "from:alice is:unread newer_than:1d"). ' +
