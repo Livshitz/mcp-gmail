@@ -3,7 +3,10 @@ import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { JwtHelper } from 'edge.libx.js/build/helpers/jwt.js';
 
-const GMAIL_SCOPE = 'https://mail.google.com/';
+const GMAIL_SCOPES = [
+  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
+].join(' ');
 const TOKEN_DIR = join(homedir(), '.mcp-gmail', 'tokens');
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
@@ -124,7 +127,7 @@ export async function runAuthFlow(email: string): Promise<void> {
   authUrl.searchParams.set('client_id', client.clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('scope', GMAIL_SCOPE);
+  authUrl.searchParams.set('scope', GMAIL_SCOPES);
   authUrl.searchParams.set('access_type', 'offline');
   authUrl.searchParams.set('prompt', 'consent');
   authUrl.searchParams.set('login_hint', email);
@@ -242,7 +245,7 @@ export async function getAccessToken(userEmail?: string): Promise<string> {
   if (saValue) {
     try {
       const sa = loadServiceAccount(saValue);
-      const token = await JwtHelper.generateOAuth(sa, GMAIL_SCOPE, { sub: email });
+      const token = await JwtHelper.generateOAuth(sa, GMAIL_SCOPES, { sub: email });
       tokenCache.set(email, { token, expiresAt: Date.now() + 50 * 60 * 1000 });
       return token;
     } catch (err: any) {
