@@ -8,7 +8,7 @@
     "http": "bun run src/mcp/cli.ts --http"
   },
   "dependencies": {
-    "edge.libx.js": "file:../edge.libx.js"
+    "edge.libx.js": "^0.5.4"
   },
   "devDependencies": {
     "@types/bun": "latest",
