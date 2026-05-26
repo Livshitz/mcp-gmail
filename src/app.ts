@@ -5,7 +5,7 @@ import { augmentMcpWithSkillResource } from './mcp/with-skill-resource.ts';
 import { gmailApi } from './gmail-api.ts';
 import { resolveUserEmail, getDefaultUserEmail, listAccounts } from './auth.ts';
 import { parseMessage } from './parse.ts';
-import { buildRawMessage } from './mime.ts';
+import { buildRawMessage, escapeHtml } from './mime.ts';
 import { slimThread } from './slim.ts';
 import { inlineOrSpool } from './spool.ts';
 import { refreshAccount, cacheMessage, fetchMessageMetaCached } from './cache.ts';
@@ -256,10 +256,10 @@ export function createGmailMcp() {
   // ── POST /gmail/reply ──
   base.describeMCP('/gmail/reply', 'POST', {
     description:
-      'Reply-all to an existing thread. Supports file attachments. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Body: { threadId, messageId, body, html?, to?, cc?, bcc?, user_email?, attachments?: [{path, filename?, mimeType?}] }.',
+      'Reply-all to an existing thread. Supports file attachments. Auto-includes all original To/CC participants (excluding self). Override with explicit to/cc/bcc. Auto-quotes original message (disable with quoteOriginal: false). Body: { threadId, messageId, body, html?, to?, cc?, bcc?, user_email?, quoteOriginal?, attachments?: [{path, filename?, mimeType?}] }.',
     params: {
       body: {
-        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string, user_email?: string, attachments?: Array<{path: string, filename?: string, mimeType?: string}> }',
+        description: '{ threadId: string, messageId: string, body: string, html?: string, to?: string, cc?: string, bcc?: string, user_email?: string, quoteOriginal?: boolean, attachments?: Array<{path: string, filename?: string, mimeType?: string}> }',
         type: 'object',
       },
     },
@@ -272,7 +272,7 @@ export function createGmailMcp() {
         return json({ error: 'threadId, messageId, and body are required' }, { status: 400 });
 
       const from = resolveUserEmail(data.user_email);
-      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'metadata', metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Message-ID'] }, userEmail: from });
+      const orig = await gmailApi(`messages/${data.messageId}`, { query: { format: 'full' }, userEmail: from });
       const headers = orig.payload?.headers ?? [];
       const h = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
@@ -283,14 +283,38 @@ export function createGmailMcp() {
       const replyCc = data.cc ?? filterSelf(h('Cc'));
 
       const subject = h('Subject').startsWith('Re:') ? h('Subject') : `Re: ${h('Subject')}`;
+
+      let plainBody = data.body;
+      let htmlBody = data.html;
+      const shouldQuote = data.quoteOriginal !== 'false' && data.quoteOriginal !== false;
+      if (shouldQuote) {
+        const parsed = parseMessage(orig);
+        if (parsed.body) {
+          const origFrom = h('From');
+          const origDate = h('Date');
+          const quotedLines = parsed.body.split('\n').map((l: string) => `> ${l}`).join('\n');
+          plainBody += `\n\nOn ${origDate}, ${origFrom} wrote:\n${quotedLines}`;
+          const quotedHtml = parsed.html || escapeHtml(parsed.body).replace(/\n/g, '<br>');
+          const safeFrom = escapeHtml(origFrom);
+          const safeDate = escapeHtml(origDate);
+          const quoteBlock = `<br><br><div class="gmail_quote"><div style="color:#888;margin-bottom:4px">On ${safeDate}, ${safeFrom} wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${quotedHtml}</blockquote></div>`;
+          if (htmlBody) {
+            htmlBody += quoteBlock;
+          } else {
+            const newHtml = escapeHtml(data.body).replace(/\n/g, '<br>');
+            htmlBody = `<div style="font-family:sans-serif;font-size:14px">${newHtml}</div>` + quoteBlock;
+          }
+        }
+      }
+
       const raw = buildRawMessage({
         from,
         to: replyTo,
         cc: replyCc || undefined,
         bcc: data.bcc,
         subject,
-        body: data.body,
-        html: data.html,
+        body: plainBody,
+        html: htmlBody,
         inReplyTo: h('Message-ID'),
         references: h('Message-ID'),
         attachments: data.attachments,

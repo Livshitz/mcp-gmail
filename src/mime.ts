@@ -20,9 +20,12 @@ export interface MessageOpts {
   attachments?: Attachment[];
 }
 
+export function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function plainToHtml(text: string): string {
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<div style="font-family:sans-serif;font-size:14px">${escaped.replace(/\n/g, '<br>')}</div>`;
+  return `<div style="font-family:sans-serif;font-size:14px">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
 }
 
 const MIME_TYPES: Record<string, string> = {
