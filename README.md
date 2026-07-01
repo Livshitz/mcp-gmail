@@ -63,6 +63,14 @@ bun run src/mcp/cli.ts --http --port 3461
 bun run src/mcp/cli.ts --auth <email>
 ```
 
+## Add to your MCP host
+
+Wire the server into an MCP host (Claude Code, Cursor, …) by adding it to your `.mcp.json` (or run `claude mcp add`):
+
+```json
+{ "mcpServers": { "gmail": { "command": "bunx", "args": ["mcp-gmail", "--stdio"], "env": { "GOOGLE_SERVICE_ACCOUNT": "./google-service-account.json", "GMAIL_USER_EMAIL": "agent@yourdomain.com" } } } }
+```
+
 ## Tools
 
 | Tool | Method | Description |
