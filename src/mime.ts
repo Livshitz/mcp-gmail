@@ -15,6 +15,7 @@ export interface MessageOpts {
   subject: string;
   body: string;
   html?: string;
+  replyTo?: string;
   inReplyTo?: string;
   references?: string;
   attachments?: Attachment[];
@@ -46,6 +47,7 @@ export function buildRawMessage(opts: MessageOpts): string {
   ];
   if (opts.cc) lines.push(`Cc: ${opts.cc}`);
   if (opts.bcc) lines.push(`Bcc: ${opts.bcc}`);
+  if (opts.replyTo) lines.push(`Reply-To: ${opts.replyTo}`);
   lines.push(`Subject: ${opts.subject}`);
   if (opts.inReplyTo) lines.push(`In-Reply-To: ${opts.inReplyTo}`);
   if (opts.references) lines.push(`References: ${opts.references}`);
