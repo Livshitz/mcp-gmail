@@ -9,6 +9,9 @@ const GMAIL_SCOPES = [
 ].join(' ');
 const TOKEN_DIR = join(homedir(), '.mcp-gmail', 'tokens');
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+/** Emails whose service-account impersonation Google refused — see getAccessToken(). Process-scoped
+ *  on purpose: granting delegation is a console change, and a restart is the natural re-check. */
+const saImpersonationDenied = new Set<string>();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -240,9 +243,14 @@ export async function getAccessToken(userEmail?: string): Promise<string> {
   const cached = tokenCache.get(email);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
 
-  // Try service account first (Workspace domains)
+  // Try service account first (Workspace domains).
+  // A service account can only impersonate (`sub`) a mailbox when domain-wide delegation is granted
+  // for THESE scopes in Workspace Admin. When it isn't, Google answers `unauthorized_client` — a
+  // permanent config fact, not a transient error, so retrying it on every token refresh buys nothing
+  // and costs a round-trip plus a stderr dump (the JWT helper prints the raw 401 itself) every ~50min
+  // and on every boot. Remember the refusal per email and go straight to OAuth after the first one.
   const saValue = process.env.GOOGLE_SERVICE_ACCOUNT?.trim();
-  if (saValue) {
+  if (saValue && !saImpersonationDenied.has(email)) {
     try {
       const sa = loadServiceAccount(saValue);
       const token = await JwtHelper.generateOAuth(sa, GMAIL_SCOPES, { sub: email });
@@ -250,7 +258,14 @@ export async function getAccessToken(userEmail?: string): Promise<string> {
       return token;
     } catch (err: any) {
       // If service account fails (e.g. personal Gmail), fall through to OAuth
-      if (!loadOAuthToken(email)) throw err;
+      const hasOAuth = !!loadOAuthToken(email);
+      if (!hasOAuth) throw err;
+      saImpersonationDenied.add(email);
+      console.warn(
+        `[mcp-gmail] service-account impersonation of ${email} refused (${err?.message ?? err}) — ` +
+        `using the stored OAuth token instead, and not retrying the service account this process. ` +
+        `To use the service account, grant it domain-wide delegation for these scopes in Workspace Admin: ${GMAIL_SCOPES}`,
+      );
     }
   }
 
