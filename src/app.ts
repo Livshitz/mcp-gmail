@@ -435,7 +435,7 @@ export function createGmailMcp() {
     try {
       const ue = new URL(req.url).searchParams.get('user_email') ?? undefined;
       const result = await gmailApi<{ filter?: any[] }>('settings/filters', { userEmail: ue });
-      return json(inlineOrSpool('filters', result.filter ?? []));
+      return json(inlineOrSpool('filters', result?.filter ?? []));
     } catch (e) {
       return json({ error: errMessage(e) }, { status: 500 });
     }
